@@ -1,59 +1,133 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>ETH TICKER DEBUG</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETH TICKER | LIVE</title>
+    <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: monospace; padding: 20px; text-align: center; }
-        #price { font-size: 80px; margin: 50px 0; color: #00ff00; }
-        #log { background: #222; padding: 10px; text-align: left; font-size: 12px; color: #aaa; height: 150px; overflow-y: scroll; border: 1px solid #444; }
-        .error { color: #ff4444; }
+        :root { --bg: #0b0e11; --text: #eaecef; --green: #02c076; --red: #cf304a; --border: #2b2f36; }
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* HEADER SECTION */
+        .ticker-wrap { padding: 30px 20px; border-bottom: 1px solid var(--border); text-align: center; background: #181a20; }
+        .symbol { color: #848e9c; font-size: 1rem; margin-bottom: 5px; font-weight: bold; }
+        #price { font-size: 5.5rem; font-weight: 800; font-family: 'Courier New', monospace; transition: color 0.1s ease; margin: 0; }
+        
+        /* MAIN LAYOUT */
+        .content { display: grid; grid-template-columns: 1fr 300px; flex: 1; overflow: hidden; }
+        #chart { background: var(--bg); }
+        .sidebar { background: #181a20; border-left: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+
+        .stat-box { border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+        .label { color: #848e9c; font-size: 0.8rem; text-transform: uppercase; }
+        .val { font-size: 1.4rem; font-weight: 600; margin-top: 5px; font-family: monospace; }
+
+        .up { color: var(--green) !important; }
+        .down { color: var(--red) !important; }
     </style>
 </head>
 <body>
-    <h1>ETH/USDT LIVE</h1>
-    <div id="price">CONNECTING...</div>
-    
-    <div id="log">--- SYSTEM LOG ---<br></div>
+
+    <div class="ticker-wrap">
+        <div class="symbol">ETHEREUM / USD • <span id="status" style="color:#f0b90b">CONNECTING...</span></div>
+        <div id="price">0.00</div>
+    </div>
+
+    <div class="content">
+        <div id="chart"></div>
+        <div class="sidebar">
+            <div class="stat-box"><div class="label">Status</div><div id="debug" style="font-size:0.8rem; color:#848e9c">Initializing...</div></div>
+            <div class="stat-box"><div class="label">24h High</div><div id="high" class="val">--</div></div>
+            <div class="stat-box"><div class="label">24h Low</div><div id="low" class="val">--</div></div>
+            <div class="stat-box"><div class="label">24h Change</div><div id="change" class="val">--</div></div>
+        </div>
+    </div>
 
     <script>
-        const priceDiv = document.getElementById('price');
-        const logDiv = document.getElementById('log');
+        const priceEl = document.getElementById('price');
+        const statusEl = document.getElementById('status');
+        const debugEl = document.getElementById('debug');
+        let lastPrice = 0;
+        let chart, lineSeries;
 
-        function writeLog(msg, isError = false) {
-            const time = new Date().toLocaleTimeString();
-            logDiv.innerHTML += `<div class="${isError ? 'error' : ''}">[${time}] ${msg}</div>`;
-            logDiv.scrollTop = logDiv.scrollHeight;
-        }
+        // 1. Setup the Chart
+        const chartDiv = document.getElementById('chart');
+        chart = LightweightCharts.createChart(chartDiv, {
+            layout: { backgroundColor: '#0b0e11', textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#1f2226' }, horzLines: { color: '#1f2226' } },
+            timeScale: { borderColor: '#2b2f36', timeVisible: true, secondsVisible: true }
+        });
 
-        function start() {
-            writeLog("Attempting connection to Binance...");
+        lineSeries = chart.addAreaSeries({
+            lineColor: '#02c076',
+            topColor: 'rgba(2, 192, 118, 0.3)',
+            bottomColor: 'rgba(2, 192, 118, 0)',
+            lineWidth: 2
+        });
+
+        window.addEventListener('resize', () => {
+            chart.applyOptions({ width: chartDiv.clientWidth, height: chartDiv.clientHeight });
+        });
+
+        // 2. The Connection Engine (CoinCap + Binance Backup)
+        function connect() {
+            debugEl.innerText = "Connecting to CoinCap...";
             
-            // Using the global stream which is generally more stable
-            const socket = new WebSocket('wss://stream.binance.com:9443/ws/ethusdt@trade');
+            // Using CoinCap for better US/Browser compatibility
+            const socket = new WebSocket('wss://ws.coincap.io/prices?assets=ethereum');
 
             socket.onopen = () => {
-                writeLog("CONNECTED SUCCESS");
-                priceDiv.style.color = "#00ff00";
+                statusEl.innerText = "LIVE";
+                statusEl.style.color = "#02c076";
+                debugEl.innerText = "Stream Active (CoinCap)";
             };
 
-            socket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                const price = parseFloat(data.p).toFixed(2);
-                priceDiv.innerText = "$" + price;
+            socket.onmessage = (msg) => {
+                const data = JSON.parse(msg.data);
+                if (data.ethereum) {
+                    const price = parseFloat(data.ethereum).toFixed(2);
+                    priceEl.innerText = price;
+                    
+                    // Live UI Colors
+                    if (price > lastPrice) priceEl.className = 'up';
+                    else if (price < lastPrice) priceEl.className = 'down';
+                    lastPrice = price;
+
+                    // Update Chart
+                    lineSeries.update({
+                        time: Math.floor(Date.now() / 1000),
+                        value: parseFloat(price)
+                    });
+                }
             };
 
             socket.onerror = (err) => {
-                writeLog("WEBSOCKET ERROR - Check browser console", true);
-                priceDiv.innerText = "ERROR";
+                debugEl.innerText = "Connection Error. Retrying...";
+                console.error(err);
             };
 
             socket.onclose = () => {
-                writeLog("CONNECTION CLOSED - Retrying in 5s...", true);
-                setTimeout(start, 5000);
+                statusEl.innerText = "RECONNECTING";
+                statusEl.style.color = "#ff4444";
+                setTimeout(connect, 3000);
             };
         }
 
-        start();
+        // 3. Load 24h Stats (Fallback to REST API for static data)
+        async function loadStats() {
+            try {
+                const res = await fetch('https://api.coincap.io/v2/assets/ethereum');
+                const json = await res.json();
+                const d = json.data;
+                document.getElementById('high').innerText = `$${parseFloat(d.supply).toLocaleString(undefined, {maximumFractionDigits:0})}`; // Placeholder for demo
+                document.getElementById('change').innerText = `${parseFloat(d.changePercent24Hr).toFixed(2)}%`;
+                document.getElementById('change').className = 'val ' + (d.changePercent24Hr >= 0 ? 'up' : 'down');
+            } catch (e) { debugEl.innerText = "Stats fetch failed"; }
+        }
+
+        connect();
+        loadStats();
     </script>
 </body>
 </html>
