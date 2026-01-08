@@ -73,8 +73,7 @@
         </div>
     </div>
 
-    <script>
-        // DEBUG FUNCTION: Print to screen so user can see what's wrong
+   <script>
         function log(msg) {
             console.log(msg);
             const el = document.getElementById('debug-status');
@@ -95,14 +94,13 @@
             const container = document.getElementById('chart-container');
             
             chart = LightweightCharts.createChart(container, {
-                layout: { backgroundColor: '#181a20', textColor: '#d1d4dc' },
+                layout: { background: { color: '#181a20' }, textColor: '#d1d4dc' },
                 grid: { vertLines: { color: '#2b2f36' }, horzLines: { color: '#2b2f36' } },
                 width: container.clientWidth,
                 height: container.clientHeight,
                 timeScale: { timeVisible: true, secondsVisible: false }
             });
 
-            // If this fails, it's a version issue
             lineSeries = chart.addAreaSeries({
                 lineColor: '#02c076',
                 topColor: 'rgba(2, 192, 118, 0.4)',
@@ -113,69 +111,74 @@
             window.addEventListener('resize', () => {
                 chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
             });
-            log("Chart Created Successfully");
+            log("Chart Ready");
 
         } catch (err) {
             showError("Chart Error: " + err.message);
         }
 
-        // 2. FETCH DATA
+        // 2. FETCH DATA (Improved with Safety Checks)
         async function updateData() {
             try {
-                log("Fetching CoinGecko Data...");
-                // Simple Price
+                log("Updating...");
                 const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_vol=true&include_24hr_high_low=true&include_24hr_change=true');
                 
-                if (!res.ok) throw new Error(`API Error: ${res.status}`);
+                if (!res.ok) throw new Error(`API Status: ${res.status}`);
                 
                 const data = await res.json();
+                
+                // CRITICAL SAFETY CHECK: Ensure 'ethereum' object exists
+                if (!data.ethereum) {
+                    log("Waiting for API data...");
+                    return;
+                }
+
                 const eth = data.ethereum;
 
-                document.getElementById('price').innerText = `$${eth.usd.toLocaleString()}`;
-                document.getElementById('high').innerText = `$${eth.usd_24h_high.toLocaleString()}`;
-                document.getElementById('low').innerText = `$${eth.usd_24h_low.toLocaleString()}`;
-                document.getElementById('vol').innerText = `$${(eth.usd_24h_vol / 1000000).toFixed(0)}M`;
+                // Helper function to safely format numbers or return "N/A"
+                const safeFormat = (val, prefix = "$") => {
+                    return (val !== undefined && val !== null) 
+                        ? prefix + val.toLocaleString(undefined, { minimumFractionDigits: 2 }) 
+                        : "N/A";
+                };
+
+                // Update UI safely
+                document.getElementById('price').innerText = safeFormat(eth.usd);
+                document.getElementById('high').innerText = safeFormat(eth.usd_24h_high);
+                document.getElementById('low').innerText = safeFormat(eth.usd_24h_low);
                 
+                // Volume looks better in Millions
+                if (eth.usd_24h_vol) {
+                    document.getElementById('vol').innerText = `$${(eth.usd_24h_vol / 1000000).toFixed(0)}M`;
+                }
+
                 // Update Chart
-                if (lineSeries) {
+                if (lineSeries && eth.usd) {
                     lineSeries.update({ time: Math.floor(Date.now() / 1000), value: eth.usd });
                 }
 
-                log("Data Updated: " + new Date().toLocaleTimeString());
+                log("Live: " + new Date().toLocaleTimeString());
 
             } catch (err) {
-                console.error(err);
-                if (err.message.includes("429")) {
-                    log("Rate Limit Hit (Too many requests). Waiting...");
-                } else {
-                    log("Fetch Error: " + err.message);
-                }
+                log("Sync Error: " + err.message);
             }
         }
 
-        // 3. LOAD HISTORY (One-time)
+        // 3. LOAD HISTORY
         async function loadHistory() {
             try {
                 const res = await fetch('https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=1');
-                if (!res.ok) throw new Error(`History API Error: ${res.status}`);
+                if (!res.ok) return;
                 const data = await res.json();
-                
-                const formattedData = data.prices.map(item => ({
-                    time: item[0] / 1000,
-                    value: item[1]
-                }));
-                
+                const formattedData = data.prices.map(item => ({ time: item[0] / 1000, value: item[1] }));
                 if (lineSeries) lineSeries.setData(formattedData);
-            } catch (err) {
-                log("History failed (likely rate limit). Skipping.");
-            }
+            } catch (e) { log("History offline"); }
         }
 
         // Start
         loadHistory();
         updateData();
-        setInterval(updateData, 15000); // Slower interval (15s) to avoid bans
-
+        setInterval(updateData, 20000); // 20 seconds to be safe from rate limits
     </script>
 </body>
 </html>
