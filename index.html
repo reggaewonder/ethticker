@@ -3,49 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ethereum Live Ticker</title>
+    <title>ETH Ticker | Live</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body { background: #121212; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .ticker-container { text-align: center; border: 1px solid #333; padding: 2rem; border-radius: 12px; background: #1e1e1e; min-width: 300px; }
-        .price { font-size: 3rem; font-weight: bold; margin: 10px 0; }
-        .label { color: #888; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; }
-        .change { font-size: 1.2rem; }
-        .up { color: #00ff88; }
-        .down { color: #ff4444; }
+        :root { --bg: #0b0e11; --card: #181a20; --text: #eaecef; --green: #02c076; --red: #cf304a; }
+        body { background: var(--bg); color: var(--text); font-family: 'Roboto', sans-serif; margin: 0; padding: 20px; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #333; }
+        .main-price { font-size: 4rem; font-weight: bold; font-family: monospace; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; margin: 20px 0; }
+        .stat-card { background: var(--card); padding: 15px; border-radius: 4px; border-left: 4px solid #444; }
+        .stat-label { color: #848e9c; font-size: 0.8rem; margin-bottom: 5px; }
+        .stat-value { font-size: 1.2rem; font-weight: 500; }
+
+        #chart-container { width: 100%; height: 400px; margin-top: 20px; background: var(--card); border-radius: 4px; padding: 10px; }
+        
+        .up { color: var(--green) !important; }
+        .down { color: var(--red) !important; }
     </style>
 </head>
 <body>
-    <div class="ticker-container">
-        <div class="label">Ethereum (ETH) - USD</div>
-        <div id="price" class="price">Loading...</div>
-        <div id="change" class="change">--</div>
+
+    <div class="header">
+        <div>
+            <div style="color: #848e9c;">ETH / USD</div>
+            <div id="price" class="main-price">0.00</div>
+        </div>
+        <div id="change-pct" style="font-size: 1.5rem;">0.00%</div>
     </div>
 
-    <script>
-        async function fetchPrice() {
-            try {
-                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_change=true');
-                const data = await response.json();
-                
-                const price = data.ethereum.usd;
-                const change = data.ethereum.usd_24h_change;
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">24h High</div><div id="high" class="stat-value">--</div></div>
+        <div class="stat-card"><div class="stat-label">24h Low</div><div id="low" class="stat-value">--</div></div>
+        <div class="stat-card"><div class="stat-label">24h Volume</div><div id="vol" class="stat-value">--</div></div>
+    </div>
 
-                document.getElementById('price').innerText = `$${price.toLocaleString()}`;
+    <div id="chart-container"></div>
+
+    <script>
+        let lastPrice = 0;
+
+        // 1. Initialize Chart
+        const chart = LightweightCharts.createChart(document.getElementById('chart-container'), {
+            layout: { backgroundColor: '#181a20', textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#2b2f36' }, horzLines: { color: '#2b2f36' } },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+            timeScale: { timeVisible: true, secondsVisible: false }
+        });
+        const lineSeries = chart.addLineSeries({ color: '#02c076', lineWidth: 2 });
+
+        // 2. Data Fetching
+        async function updateTicker() {
+            try {
+                const res = await fetch('https://api.coingecko.com/api/v3/coins/ethereum?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false');
+                const data = await res.json();
+                const md = data.market_data;
+
+                const currentPrice = md.current_price.usd;
                 
-                const changeEl = document.getElementById('change');
-                changeEl.innerText = `${change.toFixed(2)}% (24h)`;
-                changeEl.className = change >= 0 ? 'change up' : 'change down';
+                // Price Flashing Logic
+                const priceEl = document.getElementById('price');
+                priceEl.innerText = `$${currentPrice.toLocaleString()}`;
+                if (lastPrice > 0) {
+                    priceEl.className = currentPrice > lastPrice ? 'main-price up' : 'main-price down';
+                }
+                lastPrice = currentPrice;
+
+                // Stats Update
+                document.getElementById('high').innerText = `$${md.high_24h.usd.toLocaleString()}`;
+                document.getElementById('low').innerText = `$${md.low_24h.usd.toLocaleString()}`;
+                document.getElementById('vol').innerText = `$${Math.round(md.total_volume.usd).toLocaleString()}`;
                 
-                // Update browser tab title
-                document.title = `ETH: $${price.toLocaleString()}`;
-            } catch (error) {
-                console.error("Error fetching price:", error);
-            }
+                const pct = md.price_change_percentage_24h;
+                const pctEl = document.getElementById('change-pct');
+                pctEl.innerText = `${pct.toFixed(2)}%`;
+                pctEl.className = pct >= 0 ? 'up' : 'down';
+
+                // Tab Title Update
+                document.title = `ETH: $${currentPrice.toLocaleString()}`;
+
+                // Add point to chart
+                lineSeries.update({ time: Math.floor(Date.now() / 1000), value: currentPrice });
+
+            } catch (e) { console.error("Update failed", e); }
         }
 
-        // Fetch immediately, then every 10 seconds
-        fetchPrice();
-        setInterval(fetchPrice, 10000);
+        setInterval(updateTicker, 10000); // 10 second refresh
+        updateTicker();
     </script>
 </body>
 </html>
