@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethereum Live Ticker</title>
+    <style>
+        body { background: #121212; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .ticker-container { text-align: center; border: 1px solid #333; padding: 2rem; border-radius: 12px; background: #1e1e1e; min-width: 300px; }
+        .price { font-size: 3rem; font-weight: bold; margin: 10px 0; }
+        .label { color: #888; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; }
+        .change { font-size: 1.2rem; }
+        .up { color: #00ff88; }
+        .down { color: #ff4444; }
+    </style>
+</head>
+<body>
+    <div class="ticker-container">
+        <div class="label">Ethereum (ETH) - USD</div>
+        <div id="price" class="price">Loading...</div>
+        <div id="change" class="change">--</div>
+    </div>
+
+    <script>
+        async function fetchPrice() {
+            try {
+                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_change=true');
+                const data = await response.json();
+                
+                const price = data.ethereum.usd;
+                const change = data.ethereum.usd_24h_change;
+
+                document.getElementById('price').innerText = `$${price.toLocaleString()}`;
+                
+                const changeEl = document.getElementById('change');
+                changeEl.innerText = `${change.toFixed(2)}% (24h)`;
+                changeEl.className = change >= 0 ? 'change up' : 'change down';
+                
+                // Update browser tab title
+                document.title = `ETH: $${price.toLocaleString()}`;
+            } catch (error) {
+                console.error("Error fetching price:", error);
+            }
+        }
+
+        // Fetch immediately, then every 10 seconds
+        fetchPrice();
+        setInterval(fetchPrice, 10000);
+    </script>
+</body>
+</html>
