@@ -3,132 +3,231 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ETH Ticker & News</title>
+    <title>ETH Ticker | Live</title>
+    <link rel="icon" href="https://assets.coingecko.com/coins/images/279/small/ethereum.png?1595348880" type="image/x-icon">
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root { --bg: #0b0e11; --card: #181a20; --text: #eaecef; --green: #02c076; --red: #cf304a; --border: #2b2f36; }
-        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         
         /* Layout */
-        .header { padding: 15px 25px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .header { padding: 15px 25px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .main-container { display: flex; flex: 1; overflow: hidden; }
         
         /* Left Column: Chart & Stats */
-        .content-left { flex: 3; display: flex; flex-direction: column; padding: 20px; overflow-y: auto; }
-        .main-price { font-size: 3rem; font-weight: bold; font-family: monospace; }
+        .content-left { flex: 3; display: flex; flex-direction: column; padding: 20px; overflow-y: hidden; }
+        .price-group { display: flex; align-items: baseline; gap: 15px; }
+        .main-price { font-size: 3.5rem; font-weight: bold; letter-spacing: -1px; font-family: 'Monaco', monospace; transition: color 0.5s ease; }
+        
         .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
-        .stat-card { background: var(--card); padding: 12px; border-radius: 4px; border: 1px solid var(--border); }
-        .stat-label { color: #848e9c; font-size: 0.75rem; margin-bottom: 4px; }
+        .stat-card { background: var(--card); padding: 15px; border-radius: 6px; border: 1px solid var(--border); display: flex; flex-direction: column; justify-content: center; }
+        .stat-label { color: #848e9c; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+        .stat-value { font-size: 1.1rem; font-weight: 600; }
         
         /* Right Column: News Sidebar */
-        .sidebar-news { flex: 1; background: var(--card); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-width: 320px; }
-        .sidebar-header { padding: 15px; font-weight: bold; border-bottom: 1px solid var(--border); background: #202226; }
-        #news-feed { flex: 1; overflow-y: auto; padding: 10px; }
-        .news-item { padding: 12px; border-bottom: 1px solid var(--border); font-size: 0.9rem; transition: background 0.2s; }
-        .news-item:hover { background: #2b2f36; cursor: pointer; }
-        .news-item a { color: var(--text); text-decoration: none; }
-        .news-time { font-size: 0.7rem; color: #848e9c; display: block; margin-top: 5px; }
+        .sidebar-news { flex: 1; background: var(--card); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-width: 300px; max-width: 400px; }
+        .sidebar-header { padding: 15px; font-weight: bold; border-bottom: 1px solid var(--border); background: #202226; font-size: 0.9rem; letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
+        .live-dot { height: 8px; width: 8px; background-color: var(--red); border-radius: 50%; display: inline-block; box-shadow: 0 0 5px var(--red); animation: pulse 2s infinite; }
+        #news-feed { flex: 1; overflow-y: auto; }
+        .news-item { padding: 15px; border-bottom: 1px solid var(--border); transition: background 0.2s; }
+        .news-item:hover { background: #2b2f36; }
+        .news-item a { color: var(--text); text-decoration: none; font-size: 0.9rem; line-height: 1.4; display: block; }
+        .news-meta { font-size: 0.75rem; color: #666; margin-top: 8px; display: flex; justify-content: space-between; }
 
+        /* Chart */
+        #chart-container { flex: 1; background: var(--card); border-radius: 6px; border: 1px solid var(--border); overflow: hidden; position: relative; }
+        .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); z-index: 10; font-family: monospace; }
+        
         .up { color: var(--green); }
         .down { color: var(--red); }
         
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        /* Mobile Responsive */
         @media (max-width: 900px) {
             .main-container { flex-direction: column; overflow-y: auto; }
-            .sidebar-news { border-left: none; border-top: 1px solid var(--border); height: 400px; }
+            .content-left { overflow-y: visible; min-height: auto; }
+            #chart-container { min-height: 350px; }
+            .sidebar-news { border-left: none; border-top: 1px solid var(--border); height: auto; max-width: none; }
+            .main-price { font-size: 2.5rem; }
         }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <div>
-            <div style="color: #848e9c; font-size: 0.8rem; font-weight: bold;">ETHEREUM / USD</div>
-            <div id="price" class="main-price">Loading...</div>
+        <div class="price-group">
+            <div>
+                <div style="color: #848e9c; font-size: 0.8rem; font-weight: bold; margin-bottom: 5px;">ETHEREUM / USD</div>
+                <div id="price" class="main-price">Loading...</div>
+            </div>
+            <div id="change-pct" style="font-size: 1.5rem; font-weight: bold;">--%</div>
         </div>
-        <div id="change-pct" style="font-size: 1.5rem; font-weight: bold;">0.00%</div>
+        <div style="text-align: right;">
+            <div style="font-size: 0.8rem; color: #848e9c;">STATUS</div>
+            <div style="color: var(--green); font-size: 0.9rem; font-weight: bold;">● CONNECTED</div>
+        </div>
     </div>
 
     <div class="main-container">
         <div class="content-left">
             <div class="stats-grid">
-                <div class="stat-card"><div class="stat-label">24h High</div><div id="high" style="font-weight:bold;">--</div></div>
-                <div class="stat-card"><div class="stat-label">24h Low</div><div id="low" style="font-weight:bold;">--</div></div>
-                <div class="stat-card"><div class="stat-label">24h Vol</div><div id="vol" style="font-weight:bold;">--</div></div>
+                <div class="stat-card">
+                    <div class="stat-label">24h High</div>
+                    <div id="high" class="stat-value">--</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">24h Low</div>
+                    <div id="low" class="stat-value">--</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">24h Volume</div>
+                    <div id="vol" class="stat-value">--</div>
+                </div>
             </div>
-            <div id="chart-container" style="flex:1; min-height: 400px;"></div>
+            
+            <div id="chart-container">
+                <div id="loader" class="loading-overlay">LOADING HISTORICAL DATA...</div>
+            </div>
         </div>
 
         <div class="sidebar-news">
-            <div class="sidebar-header">LATEST ETH NEWS</div>
-            <div id="news-feed">Fetching news...</div>
+            <div class="sidebar-header"><span class="live-dot"></span> LIVE NEWS</div>
+            <div id="news-feed"></div>
         </div>
     </div>
 
     <script>
         let lastPrice = 0;
         let chart, lineSeries;
+        const container = document.getElementById('chart-container');
 
+        // 1. Initialize Chart
         function initChart() {
-            const container = document.getElementById('chart-container');
             chart = LightweightCharts.createChart(container, {
                 layout: { background: { color: '#181a20' }, textColor: '#d1d4dc' },
                 grid: { vertLines: { color: '#2b2f36' }, horzLines: { color: '#2b2f36' } },
                 width: container.clientWidth,
                 height: container.clientHeight,
-                timeScale: { timeVisible: true, secondsVisible: true }
+                timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#2b2f36' },
+                rightPriceScale: { borderColor: '#2b2f36' }
             });
-            lineSeries = chart.addAreaSeries({ lineColor: '#02c076', topColor: 'rgba(2, 192, 118, 0.4)', bottomColor: 'rgba(2, 192, 118, 0.0)', lineWidth: 2 });
+
+            lineSeries = chart.addAreaSeries({
+                lineColor: '#02c076',
+                topColor: 'rgba(2, 192, 118, 0.4)',
+                bottomColor: 'rgba(2, 192, 118, 0.0)',
+                lineWidth: 2,
+            });
+
+            // Make chart responsive
+            window.addEventListener('resize', () => {
+                chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+            });
         }
 
+        // 2. Load History (The "Bitcointicker" Feel)
+        async function loadHistory() {
+            try {
+                // Fetch 1 day of data from CoinGecko
+                const res = await fetch('https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=1');
+                const data = await res.json();
+                
+                // Format for Lightweight Charts (timestamp needs to be seconds, not ms)
+                const formattedData = data.prices.map(item => ({
+                    time: item[0] / 1000,
+                    value: item[1]
+                }));
+
+                lineSeries.setData(formattedData);
+                document.getElementById('loader').style.display = 'none'; // Hide loader
+            } catch (e) {
+                console.error("History Error", e);
+                document.getElementById('loader').innerText = "CHART DATA UNAVAILABLE";
+            }
+        }
+
+        // 3. Live Ticker Updates
         async function updateTicker() {
             try {
                 const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_vol=true&include_24hr_high_low=true&include_24hr_change=true');
                 const data = await res.json();
                 const eth = data.ethereum;
                 
-                document.getElementById('price').innerText = `$${eth.usd.toLocaleString()}`;
-                document.getElementById('price').style.color = eth.usd >= lastPrice ? '#02c076' : '#cf304a';
-                lastPrice = eth.usd;
+                // Price Update
+                const priceEl = document.getElementById('price');
+                const currentPrice = eth.usd;
+                priceEl.innerText = `$${currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                
+                // Flash Color
+                if (lastPrice > 0 && currentPrice !== lastPrice) {
+                    priceEl.style.color = currentPrice > lastPrice ? '#02c076' : '#cf304a';
+                    // Also update chart line color based on trend
+                    lineSeries.applyOptions({ lineColor: currentPrice > lastPrice ? '#02c076' : '#cf304a' });
+                }
+                lastPrice = currentPrice;
 
+                // Stats Update
                 document.getElementById('high').innerText = `$${eth.usd_24h_high.toLocaleString()}`;
                 document.getElementById('low').innerText = `$${eth.usd_24h_low.toLocaleString()}`;
-                document.getElementById('vol').innerText = `$${Math.round(eth.usd_24h_vol).toLocaleString()}`;
+                document.getElementById('vol').innerText = `$${(eth.usd_24h_vol / 1000000).toFixed(0)}M`;
                 
+                // Percentage Update
                 const pct = eth.usd_24h_change;
-                document.getElementById('change-pct').innerText = `${pct.toFixed(2)}%`;
-                document.getElementById('change-pct').className = pct >= 0 ? 'up' : 'down';
+                const pctEl = document.getElementById('change-pct');
+                pctEl.innerText = `${pct.toFixed(2)}%`;
+                pctEl.className = pct >= 0 ? 'up' : 'down';
+                
+                // Browser Tab Title
+                document.title = `ETH $${currentPrice.toLocaleString()} (${pct.toFixed(2)}%)`;
 
-                lineSeries.update({ time: Math.floor(Date.now() / 1000), value: eth.usd });
-            } catch (e) { console.error(e); }
+                // Add live point to chart
+                lineSeries.update({ time: Math.floor(Date.now() / 1000), value: currentPrice });
+
+            } catch (e) { console.error("Ticker Error", e); }
         }
 
+        // 4. News Feed
         async function updateNews() {
             try {
-                // Using CryptoPanic public RSS-to-JSON proxy or similar for demo
+                // Using a proxy to fetch CryptoPanic RSS
                 const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=https://cryptopanic.com/news/rss/ethereum/');
                 const data = await res.json();
                 const feed = document.getElementById('news-feed');
-                feed.innerHTML = '';
                 
-                data.items.slice(0, 15).forEach(item => {
-                    const div = document.createElement('div');
-                    div.className = 'news-item';
-                    div.innerHTML = `<a href="${item.link}" target="_blank">${item.title}</a><span class="news-time">${item.pubDate}</span>`;
-                    feed.appendChild(div);
-                });
-            } catch (e) { document.getElementById('news-feed').innerText = "News temporarily unavailable"; }
+                if (data.items) {
+                    feed.innerHTML = ''; // Clear old news
+                    data.items.slice(0, 10).forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'news-item';
+                        
+                        // Extract source name if available
+                        const date = new Date(item.pubDate);
+                        const timeStr = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                        
+                        div.innerHTML = `
+                            <a href="${item.link}" target="_blank">${item.title}</a>
+                            <div class="news-meta">
+                                <span>${timeStr}</span>
+                                <span>Source: CryptoPanic</span>
+                            </div>
+                        `;
+                        feed.appendChild(div);
+                    });
+                }
+            } catch (e) { console.error("News Error", e); }
         }
 
+        // Start everything
         initChart();
+        loadHistory(); // Load the chart history immediately!
         updateTicker();
         updateNews();
-        setInterval(updateTicker, 10000);
-        setInterval(updateNews, 300000); // News updates every 5 mins
 
-        window.addEventListener('resize', () => {
-            const container = document.getElementById('chart-container');
-            chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
-        });
+        // Timers
+        setInterval(updateTicker, 10000); // Price every 10s
+        setInterval(updateNews, 60000 * 5); // News every 5m
+
     </script>
 </body>
 </html>
