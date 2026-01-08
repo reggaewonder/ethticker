@@ -3,116 +3,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ETH Ticker | LIVE</title>
+    <title>ETH Ticker | Live Trading</title>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        :root { --bg: #0b0e11; --card: #181a20; --text: #eaecef; --green: #02c076; --red: #cf304a; --border: #2b2f36; }
+        :root { --bg: #0b0e11; --text: #eaecef; --green: #02c076; --red: #cf304a; --border: #2b2f36; }
         body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         
-        /* THE BIG TICKER LOOK */
-        .ticker-header { padding: 30px; background: var(--card); border-bottom: 2px solid var(--border); text-align: center; }
-        .symbol { font-size: 1.2rem; color: #848e9c; font-weight: bold; margin-bottom: 5px; }
-        .price-container { font-size: 5rem; font-weight: 800; font-family: 'Courier New', Courier, monospace; transition: color 0.1s ease-in-out; }
+        /* THE "BITCOINTICKER" LARGE PRICE SECTION */
+        .ticker-wrap { padding: 40px 20px; border-bottom: 1px solid var(--border); text-align: center; background: #181a20; }
+        .symbol-label { color: #848e9c; font-weight: bold; font-size: 1.1rem; margin-bottom: 10px; }
+        #price { font-size: 6rem; font-weight: 800; font-family: 'Courier New', monospace; transition: color 0.15s ease; }
         
-        /* LAYOUT */
-        .dashboard { display: grid; grid-template-columns: 1fr 350px; flex: 1; overflow: hidden; }
-        #chart-container { background: var(--bg); position: relative; border-right: 1px solid var(--border); }
-        .sidebar { background: var(--card); padding: 20px; display: flex; flex-direction: column; gap: 20px; }
-        
-        .stat-box { border-bottom: 1px solid var(--border); padding-bottom: 10px; }
-        .label { color: #848e9c; font-size: 0.8rem; text-transform: uppercase; }
-        .val { font-size: 1.4rem; font-weight: 600; margin-top: 5px; }
+        /* MAIN DASHBOARD LAYOUT */
+        .container { display: grid; grid-template-columns: 1fr 300px; flex: 1; overflow: hidden; }
+        #chart { background: var(--bg); position: relative; }
+        .sidebar { background: #181a20; border-left: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 20px; }
 
-        /* FLASHING ANIMATIONS */
-        .price-up { color: var(--green) !important; }
-        .price-down { color: var(--red) !important; }
+        /* STATS CARDS */
+        .stat-card { border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+        .stat-label { color: #848e9c; font-size: 0.8rem; text-transform: uppercase; }
+        .stat-value { font-size: 1.5rem; font-weight: 600; margin-top: 5px; }
+
+        /* LIVE FLASHING CLASSES */
+        .up { color: var(--green) !important; }
+        .down { color: var(--red) !important; }
+        .status-dot { height: 8px; width: 8px; background: var(--green); border-radius: 50%; display: inline-block; margin-right: 5px; }
     </style>
 </head>
 <body>
 
-    <div class="ticker-header">
-        <div class="symbol">ETHEREUM / USDT</div>
-        <div id="price" class="price-container">0.00</div>
+    <div class="ticker-wrap">
+        <div class="symbol-label">ETHEREUM / USDT <span id="conn-status"><span class="status-dot"></span>LIVE</span></div>
+        <div id="price">0.00</div>
     </div>
 
-    <div class="dashboard">
-        <div id="chart-container"></div>
+    <div class="container">
+        <div id="chart"></div>
         <div class="sidebar">
-            <div class="stat-box"><div class="label">24h High</div><div id="high" class="val">--</div></div>
-            <div class="stat-box"><div class="label">24h Low</div><div id="low" class="val">--</div></div>
-            <div class="stat-box"><div class="label">24h Volume</div><div id="vol" class="val">--</div></div>
-            <div class="stat-box"><div class="label">Market Sentiment</div><div id="change" class="val">--</div></div>
+            <div class="stat-card">
+                <div class="stat-label">24h High</div>
+                <div id="high" class="stat-value">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">24h Low</div>
+                <div id="low" class="stat-value">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">24h Volume</div>
+                <div id="vol" class="stat-value">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">24h Change</div>
+                <div id="change" class="stat-value">--</div>
+            </div>
         </div>
     </div>
 
     <script>
-        const priceEl = document.getElementById('price');
+        const priceDisplay = document.getElementById('price');
         let lastPrice = 0;
         let chart, lineSeries;
 
-        // 1. Setup the Professional Chart
+        // 1. Setup Chart (Professional Dark Theme)
         function initChart() {
-            const chartElement = document.getElementById('chart-container');
-            chart = LightweightCharts.createChart(chartElement, {
+            const chartDiv = document.getElementById('chart');
+            chart = LightweightCharts.createChart(chartDiv, {
                 layout: { background: { color: '#0b0e11' }, textColor: '#d1d4dc' },
                 grid: { vertLines: { color: '#1f2226' }, horzLines: { color: '#1f2226' } },
-                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                timeScale: { borderColor: '#2b2f36', timeVisible: true, secondsVisible: true }
+                timeScale: { borderColor: '#2b2f36', timeVisible: true, secondsVisible: true },
             });
-
             lineSeries = chart.addAreaSeries({
                 lineColor: '#02c076',
                 topColor: 'rgba(2, 192, 118, 0.3)',
                 bottomColor: 'rgba(2, 192, 118, 0)',
-                lineWidth: 2
+                lineWidth: 2,
             });
 
-            const resizer = new ResizeObserver(entries => {
-                chart.applyOptions({ width: entries[0].contentRect.width, height: entries[0].contentRect.height });
+            // Handle browser resizing
+            window.addEventListener('resize', () => {
+                chart.applyOptions({ width: chartDiv.clientWidth, height: chartDiv.clientHeight });
             });
-            resizer.observe(chartElement);
         }
 
-        // 2. Load Initial History (1 minute candles)
-        async function fetchHistory() {
+        // 2. Fetch Initial History
+        async function loadHistory() {
             const res = await fetch('https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1m&limit=100');
             const data = await res.json();
-            const candles = data.map(d => ({ time: d[0] / 1000, value: parseFloat(d[4]) }));
-            lineSeries.setData(candles);
+            const points = data.map(d => ({ time: d[0] / 1000, value: parseFloat(d[4]) }));
+            lineSeries.setData(points);
         }
 
-        // 3. WEBSOCKET CONNECTION (The "Live" Engine)
-        function startLiveStream() {
-            // This stream provides real-time trade updates
-            const ws = new WebSocket('wss://stream.binance.com:9443/ws/ethusdt@trade');
+        // 3. Connect WebSocket (The "Magic" Live Engine)
+        function startStreams() {
+            // Price Stream (@trade)
+            const priceWs = new WebSocket('wss://stream.binance.com:9443/ws/ethusdt@trade');
             
-            // This stream provides 24h stats (High/Low/Volume) every second
-            const wsStats = new WebSocket('wss://stream.binance.com:9443/ws/ethusdt@ticker');
-
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                const price = parseFloat(data.p).toFixed(2);
+            priceWs.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                const p = parseFloat(data.p).toFixed(2);
                 
-                // Update Price Text
-                priceEl.innerText = price;
-
-                // Color Flashing logic
-                if (price > lastPrice) {
-                    priceEl.className = 'price-container price-up';
-                } else if (price < lastPrice) {
-                    priceEl.className = 'price-container price-down';
+                // Live visual price update
+                priceDisplay.innerText = p;
+                
+                // Flicker logic (Up/Down)
+                if (p > lastPrice) {
+                    priceDisplay.className = 'up';
+                } else if (p < lastPrice) {
+                    priceDisplay.className = 'down';
                 }
-                lastPrice = price;
+                lastPrice = p;
 
-                // Update Chart live
-                lineSeries.update({
-                    time: Math.floor(data.T / 1000),
-                    value: parseFloat(data.p)
-                });
+                // Update chart point
+                lineSeries.update({ time: Math.floor(data.T / 1000), value: parseFloat(data.p) });
             };
 
-            wsStats.onmessage = (event) => {
-                const data = JSON.parse(event.data);
+            // Stats Stream (@ticker)
+            const statsWs = new WebSocket('wss://stream.binance.com:9443/ws/ethusdt@ticker');
+            statsWs.onmessage = (e) => {
+                const data = JSON.parse(e.data);
                 document.getElementById('high').innerText = `$${parseFloat(data.h).toLocaleString()}`;
                 document.getElementById('low').innerText = `$${parseFloat(data.l).toLocaleString()}`;
                 document.getElementById('vol').innerText = `${Math.floor(data.v).toLocaleString()} ETH`;
@@ -124,9 +132,10 @@
             };
         }
 
+        // Run
         initChart();
-        fetchHistory();
-        startLiveStream();
+        loadHistory();
+        startStreams();
     </script>
 </body>
 </html>
