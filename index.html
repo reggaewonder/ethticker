@@ -74,111 +74,83 @@
     </div>
 
    <script>
-        function log(msg) {
-            console.log(msg);
-            const el = document.getElementById('debug-status');
-            if(el) el.innerText = msg;
-        }
-
-        function showError(msg) {
-            const el = document.getElementById('critical-error');
-            document.getElementById('error-message').innerText = msg;
-            el.style.display = 'block';
-        }
-
         let chart, lineSeries;
+        let lastPrice = 0;
 
-        // 1. INITIALIZE CHART
-        try {
-            log("Creating Chart...");
-            const container = document.getElementById('chart-container');
-            
-            chart = LightweightCharts.createChart(container, {
-                layout: { background: { color: '#181a20' }, textColor: '#d1d4dc' },
-                grid: { vertLines: { color: '#2b2f36' }, horzLines: { color: '#2b2f36' } },
-                width: container.clientWidth,
-                height: container.clientHeight,
-                timeScale: { timeVisible: true, secondsVisible: false }
-            });
+        // 1. Setup the Chart
+        const container = document.getElementById('chart-container');
+        chart = LightweightCharts.createChart(container, {
+            layout: { background: { color: '#181a20' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#2b2f36' }, horzLines: { color: '#2b2f36' } },
+            width: container.clientWidth,
+            height: container.clientHeight,
+            timeScale: { timeVisible: true, secondsVisible: true }
+        });
 
-            lineSeries = chart.addAreaSeries({
-                lineColor: '#02c076',
-                topColor: 'rgba(2, 192, 118, 0.4)',
-                bottomColor: 'rgba(2, 192, 118, 0.0)',
-                lineWidth: 2,
-            });
+        lineSeries = chart.addAreaSeries({
+            lineColor: '#02c076',
+            topColor: 'rgba(2, 192, 118, 0.4)',
+            bottomColor: 'rgba(2, 192, 118, 0.0)',
+            lineWidth: 2,
+        });
 
-            window.addEventListener('resize', () => {
-                chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
-            });
-            log("Chart Ready");
+        // 2. CONNECT TO LIVE STREAM (Websocket)
+        // We use Binance's "Mini-Ticker" for ETH/USDT
+        const connectTicker = () => {
+            const socket = new WebSocket('wss://stream.binance.com:9443/ws/ethusdt@miniTicker');
 
-        } catch (err) {
-            showError("Chart Error: " + err.message);
-        }
-
-        // 2. FETCH DATA (Improved with Safety Checks)
-        async function updateData() {
-            try {
-                log("Updating...");
-                const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_vol=true&include_24hr_high_low=true&include_24hr_change=true');
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const currentPrice = parseFloat(data.c); // "c" is the Close (current) price
                 
-                if (!res.ok) throw new Error(`API Status: ${res.status}`);
-                
-                const data = await res.json();
-                
-                // CRITICAL SAFETY CHECK: Ensure 'ethereum' object exists
-                if (!data.ethereum) {
-                    log("Waiting for API data...");
-                    return;
+                // Update the visual price
+                const priceEl = document.getElementById('price');
+                priceEl.innerText = `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
+                // Visual "Flash" when price moves
+                if (currentPrice > lastPrice) {
+                    priceEl.style.color = '#02c076'; // Green
+                } else if (currentPrice < lastPrice) {
+                    priceEl.style.color = '#cf304a'; // Red
                 }
+                lastPrice = currentPrice;
 
-                const eth = data.ethereum;
+                // Push to Chart instantly
+                lineSeries.update({
+                    time: Math.floor(Date.now() / 1000),
+                    value: currentPrice
+                });
 
-                // Helper function to safely format numbers or return "N/A"
-                const safeFormat = (val, prefix = "$") => {
-                    return (val !== undefined && val !== null) 
-                        ? prefix + val.toLocaleString(undefined, { minimumFractionDigits: 2 }) 
-                        : "N/A";
-                };
+                document.getElementById('debug-status').innerText = "LIVE STREAMING";
+            };
 
-                // Update UI safely
-                document.getElementById('price').innerText = safeFormat(eth.usd);
-                document.getElementById('high').innerText = safeFormat(eth.usd_24h_high);
-                document.getElementById('low').innerText = safeFormat(eth.usd_24h_low);
-                
-                // Volume looks better in Millions
-                if (eth.usd_24h_vol) {
-                    document.getElementById('vol').innerText = `$${(eth.usd_24h_vol / 1000000).toFixed(0)}M`;
-                }
+            // Auto-reconnect if it drops
+            socket.onclose = () => {
+                document.getElementById('debug-status').innerText = "RECONNECTING...";
+                setTimeout(connectTicker, 3000);
+            };
+        };
 
-                // Update Chart
-                if (lineSeries && eth.usd) {
-                    lineSeries.update({ time: Math.floor(Date.now() / 1000), value: eth.usd });
-                }
-
-                log("Live: " + new Date().toLocaleTimeString());
-
-            } catch (err) {
-                log("Sync Error: " + err.message);
-            }
-        }
-
-        // 3. LOAD HISTORY
+        // 3. Load Historical Data (just once to fill the chart)
         async function loadHistory() {
             try {
-                const res = await fetch('https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=1');
-                if (!res.ok) return;
+                const res = await fetch('https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1m&limit=100');
                 const data = await res.json();
-                const formattedData = data.prices.map(item => ({ time: item[0] / 1000, value: item[1] }));
-                if (lineSeries) lineSeries.setData(formattedData);
-            } catch (e) { log("History offline"); }
+                const formattedData = data.map(d => ({
+                    time: d[0] / 1000,
+                    value: parseFloat(d[4])
+                }));
+                lineSeries.setData(formattedData);
+            } catch (e) { console.error("History failed", e); }
         }
 
-        // Start
+        // Initialize
         loadHistory();
-        updateData();
-        setInterval(updateData, 20000); // 20 seconds to be safe from rate limits
+        connectTicker();
+
+        window.addEventListener('resize', () => {
+            chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+        });
     </script>
 </body>
 </html>
