@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ETH Ticker | Live</title>
     <link rel="icon" href="https://assets.coingecko.com/coins/images/279/small/ethereum.png?1595348880" type="image/x-icon">
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root { --bg: #0b0e11; --card: #181a20; --text: #eaecef; --green: #02c076; --red: #cf304a; --border: #2b2f36; }
         body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -104,8 +104,10 @@
 
         // 1. Initialize Chart
         function initChart() {
+            if (!container) return; // Safety check
+            
             chart = LightweightCharts.createChart(container, {
-                layout: { background: { color: '#181a20' }, textColor: '#d1d4dc' },
+                layout: { backgroundColor: '#181a20', textColor: '#d1d4dc' }, // Fixed syntax for v4
                 grid: { vertLines: { color: '#2b2f36' }, horzLines: { color: '#2b2f36' } },
                 width: container.clientWidth,
                 height: container.clientHeight,
@@ -113,6 +115,7 @@
                 rightPriceScale: { borderColor: '#2b2f36' }
             });
 
+            // This function (addAreaSeries) only exists in v3/v4. It was removed in v5.
             lineSeries = chart.addAreaSeries({
                 lineColor: '#02c076',
                 topColor: 'rgba(2, 192, 118, 0.4)',
@@ -122,11 +125,11 @@
 
             // Make chart responsive
             window.addEventListener('resize', () => {
-                chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+                if(chart) chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
             });
         }
 
-        // 2. Load History (The "Bitcointicker" Feel)
+        // 2. Load History
         async function loadHistory() {
             try {
                 // Fetch 1 day of data from CoinGecko
@@ -139,8 +142,8 @@
                     value: item[1]
                 }));
 
-                lineSeries.setData(formattedData);
-                document.getElementById('loader').style.display = 'none'; // Hide loader
+                if (lineSeries) lineSeries.setData(formattedData);
+                document.getElementById('loader').style.display = 'none';
             } catch (e) {
                 console.error("History Error", e);
                 document.getElementById('loader').innerText = "CHART DATA UNAVAILABLE";
@@ -162,8 +165,8 @@
                 // Flash Color
                 if (lastPrice > 0 && currentPrice !== lastPrice) {
                     priceEl.style.color = currentPrice > lastPrice ? '#02c076' : '#cf304a';
-                    // Also update chart line color based on trend
-                    lineSeries.applyOptions({ lineColor: currentPrice > lastPrice ? '#02c076' : '#cf304a' });
+                    // Update chart line color to match trend
+                    if (lineSeries) lineSeries.applyOptions({ lineColor: currentPrice > lastPrice ? '#02c076' : '#cf304a' });
                 }
                 lastPrice = currentPrice;
 
@@ -182,7 +185,7 @@
                 document.title = `ETH $${currentPrice.toLocaleString()} (${pct.toFixed(2)}%)`;
 
                 // Add live point to chart
-                lineSeries.update({ time: Math.floor(Date.now() / 1000), value: currentPrice });
+                if (lineSeries) lineSeries.update({ time: Math.floor(Date.now() / 1000), value: currentPrice });
 
             } catch (e) { console.error("Ticker Error", e); }
         }
@@ -190,7 +193,6 @@
         // 4. News Feed
         async function updateNews() {
             try {
-                // Using a proxy to fetch CryptoPanic RSS
                 const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=https://cryptopanic.com/news/rss/ethereum/');
                 const data = await res.json();
                 const feed = document.getElementById('news-feed');
@@ -200,8 +202,6 @@
                     data.items.slice(0, 10).forEach(item => {
                         const div = document.createElement('div');
                         div.className = 'news-item';
-                        
-                        // Extract source name if available
                         const date = new Date(item.pubDate);
                         const timeStr = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                         
@@ -218,16 +218,17 @@
             } catch (e) { console.error("News Error", e); }
         }
 
-        // Start everything
-        initChart();
-        loadHistory(); // Load the chart history immediately!
-        updateTicker();
-        updateNews();
-
-        // Timers
-        setInterval(updateTicker, 10000); // Price every 10s
-        setInterval(updateNews, 60000 * 5); // News every 5m
-
+        // Wait for page to fully load before running scripts
+        window.onload = function() {
+            initChart();
+            loadHistory();
+            updateTicker();
+            updateNews();
+            
+            // Start Timers
+            setInterval(updateTicker, 10000); // Price every 10s
+            setInterval(updateNews, 60000 * 5); // News every 5m
+        };
     </script>
 </body>
 </html>
