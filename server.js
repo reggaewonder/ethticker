@@ -68,3 +68,4 @@ server.listen(PORT, () => {
 });
 
 connectToBinance();
+
