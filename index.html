@@ -1,137 +1,59 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ETH LIVE TICKER</title>
-    <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+    <title>ETH TICKER DEBUG</title>
     <style>
-        :root { --bg: #0b0e11; --text: #eaecef; --green: #02c076; --red: #cf304a; --border: #2b2f36; }
-        body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, sans-serif; margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        
-        /* HUGE PRICE SECTION - BITCOINTICKER STYLE */
-        .ticker-panel { padding: 40px 20px; border-bottom: 1px solid var(--border); text-align: center; background: #181a20; }
-        .symbol { color: #848e9c; font-weight: bold; font-size: 1rem; margin-bottom: 10px; letter-spacing: 1px; }
-        #price { font-size: 6.5rem; font-weight: 800; font-family: 'Courier New', monospace; transition: color 0.1s ease; margin: 0; line-height: 1; }
-        
-        /* DASHBOARD LAYOUT */
-        .main { display: grid; grid-template-columns: 1fr 320px; flex: 1; overflow: hidden; }
-        #chart-box { background: var(--bg); position: relative; }
-        .sidebar { background: #181a20; border-left: 1px solid var(--border); padding: 25px; display: flex; flex-direction: column; gap: 25px; }
-
-        .stat-item { border-bottom: 1px solid var(--border); padding-bottom: 15px; }
-        .stat-label { color: #848e9c; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
-        .stat-value { font-size: 1.6rem; font-weight: 600; margin-top: 8px; font-family: monospace; }
-
-        /* LIVE COLORS */
-        .up { color: var(--green) !important; }
-        .down { color: var(--red) !important; }
-        
-        @media (max-width: 900px) {
-            .main { grid-template-columns: 1fr; overflow-y: auto; }
-            .sidebar { border-left: none; border-top: 1px solid var(--border); }
-            #price { font-size: 4rem; }
-        }
+        body { background: #000; color: #fff; font-family: monospace; padding: 20px; text-align: center; }
+        #price { font-size: 80px; margin: 50px 0; color: #00ff00; }
+        #log { background: #222; padding: 10px; text-align: left; font-size: 12px; color: #aaa; height: 150px; overflow-y: scroll; border: 1px solid #444; }
+        .error { color: #ff4444; }
     </style>
 </head>
 <body>
-
-    <div class="ticker-panel">
-        <div class="symbol">ETHEREUM / USDT • LIVE</div>
-        <div id="price">0.00</div>
-    </div>
-
-    <div class="main">
-        <div id="chart-box"></div>
-        <div class="sidebar">
-            <div class="stat-item"><div class="stat-label">24h High</div><div id="high" class="stat-value">--</div></div>
-            <div class="stat-item"><div class="stat-label">24h Low</div><div id="low" class="stat-value">--</div></div>
-            <div class="stat-item"><div class="stat-label">24h Volume</div><div id="vol" class="stat-value">--</div></div>
-            <div class="stat-item"><div class="stat-label">24h % Change</div><div id="change" class="stat-value">--</div></div>
-        </div>
-    </div>
+    <h1>ETH/USDT LIVE</h1>
+    <div id="price">CONNECTING...</div>
+    
+    <div id="log">--- SYSTEM LOG ---<br></div>
 
     <script>
-        const priceEl = document.getElementById('price');
-        let lastPrice = 0;
-        let chart, lineSeries;
+        const priceDiv = document.getElementById('price');
+        const logDiv = document.getElementById('log');
 
-        // 1. Initialize Pro Chart
-        function setupChart() {
-            const container = document.getElementById('chart-box');
-            chart = LightweightCharts.createChart(container, {
-                layout: { backgroundColor: '#0b0e11', textColor: '#d1d4dc' },
-                grid: { vertLines: { color: '#1f2226' }, horzLines: { color: '#1f2226' } },
-                timeScale: { borderColor: '#2b2f36', timeVisible: true, secondsVisible: true },
-                rightPriceScale: { borderColor: '#2b2f36' }
-            });
-
-            lineSeries = chart.addAreaSeries({
-                lineColor: '#02c076',
-                topColor: 'rgba(2, 192, 118, 0.3)',
-                bottomColor: 'rgba(2, 192, 118, 0)',
-                lineWidth: 2,
-            });
-
-            const resize = () => chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
-            window.addEventListener('resize', resize);
-            resize();
+        function writeLog(msg, isError = false) {
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div class="${isError ? 'error' : ''}">[${time}] ${msg}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
         }
 
-        // 2. Load History (Binance API)
-        async function getHistory() {
-            try {
-                const res = await fetch('https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1m&limit=150');
-                const data = await res.json();
-                const cleanData = data.map(d => ({ time: d[0] / 1000, value: parseFloat(d[4]) }));
-                lineSeries.setData(cleanData);
-            } catch (e) { console.error("History fail", e); }
-        }
-
-        // 3. Connect the Live Stream (WebSockets)
-        function initLiveStream() {
-            // High-speed Price Stream
-            const tradeWs = new WebSocket('wss://stream.binance.com:9443/ws/ethusdt@trade');
+        function start() {
+            writeLog("Attempting connection to Binance...");
             
-            tradeWs.onmessage = (msg) => {
-                const data = JSON.parse(msg.data);
-                const p = parseFloat(data.p).toFixed(2);
-                
-                priceEl.innerText = p;
+            // Using the global stream which is generally more stable
+            const socket = new WebSocket('wss://stream.binance.com:9443/ws/ethusdt@trade');
 
-                // Live Color Flickering
-                if (p > lastPrice) {
-                    priceEl.className = 'up';
-                } else if (p < lastPrice) {
-                    priceEl.className = 'down';
-                }
-                lastPrice = p;
-
-                // Update Chart
-                lineSeries.update({ time: Math.floor(data.T / 1000), value: parseFloat(data.p) });
+            socket.onopen = () => {
+                writeLog("CONNECTED SUCCESS");
+                priceDiv.style.color = "#00ff00";
             };
 
-            // 24h Stats Stream
-            const statsWs = new WebSocket('wss://stream.binance.com:9443/ws/ethusdt@ticker');
-            statsWs.onmessage = (msg) => {
-                const data = JSON.parse(msg.data);
-                document.getElementById('high').innerText = `$${parseFloat(data.h).toLocaleString()}`;
-                document.getElementById('low').innerText = `$${parseFloat(data.l).toLocaleString()}`;
-                document.getElementById('vol').innerText = `${Math.floor(data.v).toLocaleString()} ETH`;
-                
-                const chg = parseFloat(data.P);
-                const chgEl = document.getElementById('change');
-                chgEl.innerText = (chg > 0 ? '+' : '') + chg + '%';
-                chgEl.className = 'stat-value ' + (chg >= 0 ? 'up' : 'down');
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const price = parseFloat(data.p).toFixed(2);
+                priceDiv.innerText = "$" + price;
             };
 
-            tradeWs.onclose = () => setTimeout(initLiveStream, 2000);
+            socket.onerror = (err) => {
+                writeLog("WEBSOCKET ERROR - Check browser console", true);
+                priceDiv.innerText = "ERROR";
+            };
+
+            socket.onclose = () => {
+                writeLog("CONNECTION CLOSED - Retrying in 5s...", true);
+                setTimeout(start, 5000);
+            };
         }
 
-        // Run Engine
-        setupChart();
-        getHistory();
-        initLiveStream();
+        start();
     </script>
 </body>
 </html>
