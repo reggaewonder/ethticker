@@ -6,45 +6,326 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EthTicker</title>
   <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: Arial, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
       min-height: 100vh;
-      margin: 0;
-      background: #fff;
+      padding: 20px;
     }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .logo span { color: #627eea; }
     #price {
-      font-size: 4rem;
-      font-weight: bold;
+      font-size: 3.5rem;
+      font-weight: 700;
     }
-    #updated {
-      position: fixed;
-      bottom: 20px;
-      font-size: 0.8rem;
-      color: #999;
+    #price.up { color: #3fb950; }
+    #price.down { color: #f85149; }
+    #change {
+      font-size: 1.1rem;
+      margin-top: 8px;
+      padding: 4px 12px;
+      border-radius: 4px;
+      display: inline-block;
     }
+    #change.up { background: rgba(63,185,80,0.2); color: #3fb950; }
+    #change.down { background: rgba(248,81,73,0.2); color: #f85149; }
+    .timeframes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin: 20px 0;
+    }
+    .tf-btn {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #8b949e;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.15s;
+    }
+    .tf-btn:hover { border-color: #627eea; color: #e6edf3; }
+    .tf-btn.active { background: #627eea; border-color: #627eea; color: #fff; }
+    .chart-container {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      font-size: 0.85rem;
+      color: #8b949e;
+    }
+    #chart {
+      width: 100%;
+      height: 300px;
+    }
+    .chart-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 300px;
+      color: #8b949e;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 30px;
+      font-size: 0.75rem;
+      color: #8b949e;
+    }
+    .footer a { color: #627eea; text-decoration: none; }
   </style>
 </head>
 <body>
-  <div id="price">Loading...</div>
-  <div id="updated"></div>
+  <div class="container">
+    <div class="header">
+      <div class="logo"><span>Eth</span>Ticker</div>
+      <div id="price">Loading...</div>
+      <div id="change">-</div>
+    </div>
+
+```
+<div class="timeframes">
+  <button class="tf-btn" data-days="0.007" data-label="10m">10m</button>
+  <button class="tf-btn" data-days="0.042" data-label="1h">1h</button>
+  <button class="tf-btn" data-days="0.125" data-label="3h">3h</button>
+  <button class="tf-btn" data-days="0.5" data-label="12h">12h</button>
+  <button class="tf-btn active" data-days="1" data-label="24h">24h</button>
+  <button class="tf-btn" data-days="3" data-label="3d">3d</button>
+  <button class="tf-btn" data-days="7" data-label="7d">7d</button>
+  <button class="tf-btn" data-days="30" data-label="30d">30d</button>
+  <button class="tf-btn" data-days="90" data-label="3m">3m</button>
+  <button class="tf-btn" data-days="180" data-label="6m">6m</button>
+  <button class="tf-btn" data-days="365" data-label="1y">1y</button>
+  <button class="tf-btn" data-days="1825" data-label="5y">5y</button>
+</div>
+
+<div class="chart-container">
+  <div class="chart-header">
+    <span id="chartLabel">Last 24 hours</span>
+    <span id="chartRange"></span>
+  </div>
+  <canvas id="chart"></canvas>
+  <div class="chart-loading" id="chartLoading">Loading chart...</div>
+</div>
+
+<div class="footer">
+  <p>Price from Coinbase • Chart data from CoinGecko</p>
+  <p style="margin-top:5px">Inspired by <a href="https://bitcointicker.co" target="_blank">bitcointicker.co</a></p>
+</div>
+```
+
+  </div>
+
   <script>
+    let currentPrice = null;
+    let prevPrice = null;
+    let chartData = [];
+    let currentDays = 1;
+    
+    const priceEl = document.getElementById('price');
+    const changeEl = document.getElementById('change');
+    const chartCanvas = document.getElementById('chart');
+    const chartLoading = document.getElementById('chartLoading');
+    const chartLabel = document.getElementById('chartLabel');
+    const chartRange = document.getElementById('chartRange');
+    const ctx = chartCanvas.getContext('2d');
+
+    // Fetch live price from Coinbase
     async function fetchPrice() {
       try {
         const res = await fetch('https://api.coinbase.com/v2/prices/ETH-USD/spot');
         const data = await res.json();
-        const price = parseFloat(data.data.amount);
-        document.getElementById('price').textContent = '$' + price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.title = '$' + price.toFixed(2) + ' | EthTicker';
-        document.getElementById('updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+        prevPrice = currentPrice;
+        currentPrice = parseFloat(data.data.amount);
+        
+        priceEl.textContent = '$' + currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.title = '$' + currentPrice.toFixed(2) + ' | EthTicker';
+        
+        priceEl.classList.remove('up', 'down');
+        if (prevPrice !== null && currentPrice !== prevPrice) {
+          priceEl.classList.add(currentPrice > prevPrice ? 'up' : 'down');
+        }
+        
+        updateChange();
       } catch (e) {
-        console.error(e);
+        console.error('Price fetch error:', e);
       }
     }
+
+    // Update change based on chart data
+    function updateChange() {
+      if (chartData.length > 0 && currentPrice) {
+        const startPrice = chartData[0].price;
+        const change = currentPrice - startPrice;
+        const changePct = (change / startPrice) * 100;
+        
+        changeEl.textContent = (change >= 0 ? '+' : '') + '$' + change.toFixed(2) + ' (' + (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%)';
+        changeEl.classList.remove('up', 'down');
+        changeEl.classList.add(change >= 0 ? 'up' : 'down');
+      }
+    }
+
+    // Fetch chart data from CoinGecko
+    async function fetchChart(days) {
+      chartLoading.style.display = 'flex';
+      chartCanvas.style.display = 'none';
+      
+      try {
+        // CoinGecko market_chart endpoint
+        const url = `https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=${days}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        chartData = data.prices.map(([time, price]) => ({ time, price }));
+        
+        // Update range display
+        if (chartData.length > 0) {
+          const minPrice = Math.min(...chartData.map(d => d.price));
+          const maxPrice = Math.max(...chartData.map(d => d.price));
+          chartRange.textContent = '$' + minPrice.toFixed(2) + ' - $' + maxPrice.toFixed(2);
+        }
+        
+        updateChange();
+        drawChart();
+        
+        chartLoading.style.display = 'none';
+        chartCanvas.style.display = 'block';
+      } catch (e) {
+        console.error('Chart fetch error:', e);
+        chartLoading.textContent = 'Failed to load chart';
+      }
+    }
+
+    // Draw the chart
+    function drawChart() {
+      const rect = chartCanvas.parentElement.getBoundingClientRect();
+      chartCanvas.width = rect.width - 40;
+      chartCanvas.height = 300;
+      
+      const w = chartCanvas.width;
+      const h = chartCanvas.height;
+      const padding = { top: 20, right: 10, bottom: 30, left: 60 };
+      
+      // Clear
+      ctx.fillStyle = '#161b22';
+      ctx.fillRect(0, 0, w, h);
+      
+      if (chartData.length < 2) return;
+      
+      const prices = chartData.map(d => d.price);
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      const priceRange = maxPrice - minPrice || 1;
+      
+      const chartW = w - padding.left - padding.right;
+      const chartH = h - padding.top - padding.bottom;
+      
+      // Determine if up or down overall
+      const isUp = chartData[chartData.length - 1].price >= chartData[0].price;
+      const lineColor = isUp ? '#3fb950' : '#f85149';
+      const fillColor = isUp ? 'rgba(63,185,80,0.2)' : 'rgba(248,81,73,0.2)';
+      
+      // Draw grid lines
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (i / 4) * chartH;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(w - padding.right, y);
+        ctx.stroke();
+        
+        // Price labels
+        const price = maxPrice - (i / 4) * priceRange;
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '11px -apple-system, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('$' + price.toFixed(2), padding.left - 8, y + 4);
+      }
+      
+      // Draw fill
+      ctx.beginPath();
+      ctx.moveTo(padding.left, padding.top + chartH);
+      chartData.forEach((d, i) => {
+        const x = padding.left + (i / (chartData.length - 1)) * chartW;
+        const y = padding.top + chartH - ((d.price - minPrice) / priceRange) * chartH;
+        ctx.lineTo(x, y);
+      });
+      ctx.lineTo(padding.left + chartW, padding.top + chartH);
+      ctx.closePath();
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+      
+      // Draw line
+      ctx.beginPath();
+      chartData.forEach((d, i) => {
+        const x = padding.left + (i / (chartData.length - 1)) * chartW;
+        const y = padding.top + chartH - ((d.price - minPrice) / priceRange) * chartH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Current price line
+      if (currentPrice && currentPrice >= minPrice && currentPrice <= maxPrice) {
+        const y = padding.top + chartH - ((currentPrice - minPrice) / priceRange) * chartH;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = '#627eea';
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(w - padding.right, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // Timeframe button handlers
+    document.querySelectorAll('.tf-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        const days = parseFloat(btn.dataset.days);
+        const label = btn.dataset.label;
+        currentDays = days;
+        
+        chartLabel.textContent = 'Last ' + label;
+        fetchChart(days);
+      });
+    });
+
+    // Resize handler
+    window.addEventListener('resize', drawChart);
+
+    // Init
     fetchPrice();
     setInterval(fetchPrice, 2000);
+    fetchChart(1);
   </script>
+
 </body>
 </html>
